@@ -265,6 +265,11 @@ const satellite = L.tileLayer(
 // doubleClickZoom を無効にしてダブルクリックをルート設定に使えるようにする
 const map = L.map('map', { layers: [osm], doubleClickZoom: false }).setView([35.6938, 139.7034], 13);
 
+// ★★★ 追加：地図を動かしたら追従を解除 ★★★
+map.on("dragstart", () => {
+  followMode = false;
+});
+
 let isSatellite = false;
 document.getElementById("toggle-layer-btn").onclick = () => {
   if (isSatellite) {
