@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>Tokyo Bike Map（23区 自転車通行可歩道）</title>
+
+  <!-- iOS / PWA -->
+  <link rel="apple-touch-icon" href="aicon1.png">
+  <link rel="apple-touch-startup-image" href="splash1.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="theme-color" content="#0066ff">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined" />
+  <link rel="manifest" href="manifest.json">
+
+  <style>
+    #map { height: 100vh; margin: 0; padding: 0; }
+    body { margin: 0; padding: 0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial; }
+
+    .bike-glow {
+      filter: drop-shadow(0 0 3px rgba(0, 102, 255, 0.8));
+    }
+
+    #locate-btn {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      z-index: 9999;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: #ffffff;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      cursor: pointer;
+    }
+    #locate-btn i { font-size: 28px; color: #1e88e5; }
+
+    /* ルートキャンセルボタン（現在地ボタンの左隣） */
+    #cancel-route-btn {
+      position: absolute;
+      bottom: 20px;
+      right: 88px; /* locate-btn の左に配置 */
+      z-index: 9999;
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: #ffffff;
+      border: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      cursor: pointer;
+    }
+    #cancel-route-btn i { font-size: 26px; color: #ff4444; }
+
+    #toggle-layer-btn {
+      position: absolute;
+      top: 20px;
+      right: 20px;
+      z-index: 9999;
+      background: white;
+      padding: 10px 14px;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      cursor: pointer;
+    }
+
+    #search-box {
+      position: absolute;
+      top: 70px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 9999;
+      width: 80%;
+      max-width: 400px;
+      display: flex;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+    #search-input {
+      flex: 1;
+      padding: 10px;
+      border: none;
+      font-size: 16px;
+    }
+    #search-btn {
+      padding: 10px 14px;
+      background: #1e88e5;
+      color: white;
+      border: none;
+      cursor: pointer;
+      border-radius: 0 8px 8px 0;
+    }
+
+    #heading-arrow {
+      position: absolute;
+      bottom: 100px;
+      right: 20px;
+      z-index: 9999;
+      width: 40px;
+      height: 40px;
+      transform-origin: center;
+      opacity: 0.9;
+    }
+
+    /* ？ボタン */
+    #help-btn {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      width: 48px;
+      height: 48px;
+      background: white;
+      border-radius: 50%;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 24px;
+      cursor: pointer;
+      z-index: 9999;
+    }
+
+    /* モーダル背景 */
+    #help-modal.hidden {
+      display: none;
+    }
+
+    #help-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 10000;
+    }
+
+    /* モーダル内容 */
+    .modal-content {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      width: 80%;
+      max-width: 400px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+    }
+
+    /* 小さなトースト（任意のフィードバック表示） */
+    #toast {
+      position: absolute;
+      bottom: 90px;
+      right: 20px;
+      z-index: 10001;
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 8px 12px;
+      border-radius: 6px;
+      font-size: 14px;
+      display: none;
+    }
+
+    /* ルート情報パネル（中央よりさらに1cm中央寄りに移動） */
+    #route-info {
+  position: absolute;
+  top: 50%;               /* 画面の縦中央 */
+  right: 20px;            /* 右端から20px（ボタンと揃える） */
+  transform: translateY(-50%); /* 完全に中央に配置 */
+  z-index: 9999;
+  background: rgba(255,255,255,0.95);
+  padding: 8px 12px;
+  border-radius: 8px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+  font-size: 14px;
+  display: none;
+  min-width: 160px;
+}
+    #route-info b { display: inline-block; width: 72px; }
+
+    /* 小さいレスポンシブ調整 */
+    @media (max-width: 420px) {
+      #search-box { width: 92%; top: 64px; }
+      /* モバイルでは中央寄せを少し調整（中央より約0.8cm右寄せ） */
+      #route-info {
+    right: 30px; /* 少し左へ */
+    top: 50%;
+    transform: translateY(-50%); }
+    }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<button id="locate-btn" title="現在地">
+  <i class="material-symbols-outlined">my_location</i>
+</button>
+
+<!-- ルートキャンセルボタン -->
+<button id="cancel-route-btn" title="ルートをキャンセル">
+  <i class="material-symbols-outlined">close</i>
+</button>
+
+<div id="toggle-layer-btn">航空写真</div>
+
+<div id="search-box">
+  <input id="search-input" type="text" placeholder="目的地を検索">
+  <button id="search-btn">検索</button>
+</div>
+
+<img id="heading-arrow" src="data:image/svg+xml;utf8,
+<svg xmlns='http://www.w3.org/2000/svg' width='40' height='40'>
+<polygon points='20,0 30,40 20,30 10,40' fill='#ff4444'/>
+</svg>" />
+
+<!-- ？ボタン -->
+<div id="help-btn">？</div>
+
+<!-- ルート情報パネル -->
+<div id="route-info"></div>
+
+<!-- モーダル本体 -->
+<div id="help-modal" class="hidden">
+  <div class="modal-content">
+    <h2>このアプリについて</h2>
+    <p>
+      交通状況等の状況によって自転車が車道を通行すると事故の危険があることを想定できる車道を抽出しました。
+      そのようなやむを得ない場合に例外的に自転車が通行ができる歩道を表示する地図アプリです。
+    </p>
+    <button id="close-help">閉じる</button>
+  </div>
+</div>
+
+<!-- トースト -->
+<div id="toast"></div>
+
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/topojson-client@3"></script>
+<!-- turf for point-in-polygon -->
+<script src="https://cdn.jsdelivr.net/npm/@turf/turf@6/turf.min.js"></script>
+
+<script>
+// ===============================
+// 設定とレイヤー
+// ===============================
+const osm = L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '© OpenStreetMap contributors'
+});
+const satellite = L.tileLayer(
+  'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+  { maxZoom: 19 }
+);
+
+// doubleClickZoom を無効にしてダブルクリックをルート設定に使えるようにする
+const map = L.map('map', { layers: [osm], doubleClickZoom: false }).setView([35.6938, 139.7034], 13);
+
+let isSatellite = false;
+document.getElementById("toggle-layer-btn").onclick = () => {
+  if (isSatellite) {
+    map.removeLayer(satellite);
+    map.addLayer(osm);
+  } else {
+    map.removeLayer(osm);
+    map.addLayer(satellite);
+  }
+  isSatellite = !isSatellite;
+};
+
+// ===============================
+// グローバル変数
+// ===============================
+let fullGeo = null;                 // 全TopoJSON→GeoJSON
+let sidewalkLayer = L.layerGroup().addTo(map);
+let circleLayer = null;             // 1km円（塗りつぶし）
+let exclusionPolygons = null;       // 駅・公園等のポリゴン（除外）
+let userMarker = null;              // 現在地マーカー（追跡）
+let followMode = false;             // 現在地追従フラグ
+let destMarker = null;
+let routeLine = null;
+
+// ルート情報要素
+const routeInfoEl = document.getElementById("route-info");
+
+// ===============================
+// URLパラメータで現在地を偽装
+function getFakeLocation() {
+  const p = new URLSearchParams(location.search);
+  const lat = p.get("lat");
+  const lng = p.get("lng");
+  if (lat && lng) return [parseFloat(lat), parseFloat(lng)];
+  return null;
+}
+
+// ===============================
+// TopoJSON URL（ローカル or GitHub raw）
+function getTopoURL() {
+  return location.hostname === "localhost"
+    ? "tokyo23_blue_all_v2.json"
+    : "https://raw.githubusercontent.com/jitensha-navi/jitensha-hokousya-navi/main/tokyo23_blue_all_v2.json";
+}
+
+// ===============================
+// 距離計算（Haversine）
+function isWithin1km(lat1, lon1, lat2, lon2) {
+  const R = 6371; // km
+  const dLat = (lat2 - lat1) * Math.PI/180;
+  const dLon = (lon2 - lon1) * Math.PI/180;
+  const a = Math.sin(dLat/2)**2 +
+            Math.cos(lat1*Math.PI/180) *
+            Math.cos(lat2*Math.PI/180) *
+            Math.sin(dLon/2)**2;
+  return R * (2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))) <= 1;
+}
+
+// ===============================
+// ポリゴン内部判定（turf）
+function isInsideExclusionArea(lat, lon) {
+  if (!exclusionPolygons) return false;
+  const pt = turf.point([lon, lat]);
+  return exclusionPolygons.features.some(poly => turf.booleanPointInPolygon(pt, poly));
+}
+
+// ===============================
+// 1km以内のライン抽出（ポリゴン内部は完全除外）
+function filterNearbyLines(centerLat, centerLon) {
+  if (!fullGeo) return null;
+
+  const filtered = fullGeo.features.filter(f => {
+    if (!f.geometry) return false;
+
+    let firstPoint = null;
+
+    if (f.geometry.type === "LineString") {
+      firstPoint = f.geometry.coordinates[0];
+    } else if (f.geometry.type === "MultiLineString") {
+      firstPoint = f.geometry.coordinates[0][0];
+    } else {
+      return false;
+    }
+
+    const lon = firstPoint[0];
+    const lat = firstPoint[1];
+
+    // 駅・公園ポリゴン内部なら除外
+    if (isInsideExclusionArea(lat, lon)) return false;
+
+    // 半径1km以内だけ採用
+    return isWithin1km(centerLat, centerLon, lat, lon);
+  });
+
+  return { type: "FeatureCollection", features: filtered };
+}
+
+// ===============================
+// TopoJSON 読み込み
+function loadTopoJSON() {
+  fetch(getTopoURL())
+    .then(res => res.json())
+    .then(topo => {
+      const key = Object.keys(topo.objects)[0];
+      fullGeo = topojson.feature(topo, topo.objects[key]);
+      console.log("Loaded topo features:", fullGeo.features.length);
+      startLocationTracking();
+    })
+    .catch(err => console.error("TopoJSON load error:", err));
+}
+loadTopoJSON();
+
+// ===============================
+// 現在地追跡（Fake → Real）
+function startLocationTracking() {
+  const fake = getFakeLocation();
+
+  if (fake) {
+    setUserLocation(fake[0], fake[1], true);
+    return;
+  }
+
+  if (!navigator.geolocation) {
+    console.warn("Geolocation not supported");
+    return;
+  }
+
+  navigator.geolocation.watchPosition(pos => {
+    setUserLocation(pos.coords.latitude, pos.coords.longitude, false);
+  }, err => {
+    console.warn("Geolocation error:", err);
+  }, { enableHighAccuracy: true, maximumAge: 10000, timeout: 10000 });
+}
+
+// ===============================
+// ユーザー位置更新（マーカー更新 + 1km範囲更新）
+function setUserLocation(lat, lng, centerMap=false) {
+  const latlng = [lat, lng];
+
+  if (!userMarker) {
+    userMarker = L.circleMarker(latlng, {
+      radius: 8,
+      fillColor: "#00aaff",
+      color: "#0066aa",
+      weight: 2,
+      fillOpacity: 0.9
+    }).addTo(map);
+  } else {
+    userMarker.setLatLng(latlng);
+  }
+
+  if (followMode || centerMap) {
+    map.setView(latlng, centerMap ? 15 : map.getZoom());
+  }
+
+  updateNearby(lat, lng);
+}
+
+// ===============================
+// 1km以内のラインを描画 + 1km円を描画（円は塗りつぶし）
+function updateNearby(lat, lng) {
+  const nearby = filterNearbyLines(lat, lng);
+  if (!nearby) return;
+
+  // 1km円（塗りつぶし）
+  if (circleLayer) map.removeLayer(circleLayer);
+  circleLayer = L.circle([lat, lng], {
+    radius: 1000,
+    color: "#0099ff",
+    weight: 2,
+    fillColor: "#0099ff",
+    fillOpacity: 0.12
+  }).addTo(map);
+
+  // 歩道ライン（近傍のみ）
+  sidewalkLayer.clearLayers();
+  L.geoJSON(nearby, {
+    style: {
+      color: "#0066ff",
+      weight: 2,
+      opacity: 1.0,
+      className: "bike-glow"
+    }
+  }).addTo(sidewalkLayer);
+}
+
+// ===============================
+// 現在地ボタン（既存の機能を維持）
+document.getElementById("locate-btn").onclick = () => {
+  followMode = true;
+  if (userMarker) {
+    map.setView(userMarker.getLatLng(), 17);
+  } else {
+    if (navigator.geolocation) {
+      navigator.geolocation.getCurrentPosition(pos => {
+        setUserLocation(pos.coords.latitude, pos.coords.longitude, true);
+      });
+    }
+  }
+};
+
+// ===============================
+// トースト表示ユーティリティ
+const toast = document.getElementById("toast");
+function showToast(msg, ms = 1500) {
+  toast.textContent = msg;
+  toast.style.display = "block";
+  clearTimeout(toast._t);
+  toast._t = setTimeout(() => {
+    toast.style.display = "none";
+  }, ms);
+}
+
+// ===============================
+// ルートキャンセルボタン（追加機能）
+const cancelBtn = document.getElementById("cancel-route-btn");
+cancelBtn.onclick = () => {
+  let removed = false;
+  if (routeLine) {
+    map.removeLayer(routeLine);
+    routeLine = null;
+    removed = true;
+  }
+  if (destMarker) {
+    map.removeLayer(destMarker);
+    destMarker = null;
+    removed = true;
+  }
+  // ルート情報パネルを隠す
+  routeInfoEl.style.display = "none";
+  if (removed) {
+    showToast("ルートをキャンセルしました");
+  } else {
+    showToast("表示中のルートはありません");
+  }
+};
+
+// ===============================
+// 向き矢印（deviceorientation）
+window.addEventListener("deviceorientation", e => {
+  const arrow = document.getElementById("heading-arrow");
+  if (!arrow) return;
+
+  if (e.webkitCompassHeading) {
+    arrow.style.transform = `rotate(${e.webkitCompassHeading}deg)`;
+  } else if (e.alpha !== null) {
+    arrow.style.transform = `rotate(${360 - e.alpha}deg)`;
+  }
+});
+
+// ===============================
+// 長押しルート案内（長押しで目的地設定）
+let longPressTimer = null;
+
+map.on("mousedown touchstart", e => {
+  const latlng = e.latlng || (e.originalEvent && e.originalEvent.touches ? map.mouseEventToLatLng(e.originalEvent.touches[0]) : null);
+  longPressTimer = setTimeout(() => {
+    if (latlng) setDestination(latlng);
+  }, 1200);
+});
+map.on("mouseup touchend touchcancel", () => clearTimeout(longPressTimer));
+
+function setDestination(latlng) {
+  let ll;
+  if (Array.isArray(latlng)) ll = L.latLng(latlng[0], latlng[1]);
+  else if (latlng.lat !== undefined && latlng.lng !== undefined) ll = L.latLng(latlng.lat, latlng.lng);
+  else ll = L.latLng(latlng[0], latlng[1]);
+
+  if (destMarker) map.removeLayer(destMarker);
+  destMarker = L.marker(ll).addTo(map);
+
+  if (userMarker) fetchRoute(userMarker.getLatLng(), ll);
+  else {
+    // ユーザー位置がまだない場合は地図中心からルートを引く（代替）
+    const center = map.getCenter();
+    fetchRoute(L.latLng(center.lat, center.lng), ll);
+  }
+}
+
+// ルート取得（OSRM: foot profile）＋距離と自転車所要時間の表示
+function fetchRoute(startLatLng, endLatLng) {
+  // startLatLng, endLatLng are L.LatLng
+  const start = startLatLng.lng + "," + startLatLng.lat;
+  const end = endLatLng.lng + "," + endLatLng.lat;
+  const url = `https://router.project-osrm.org/route/v1/foot/${start};${end}?overview=full&geometries=geojson`;
+
+  // 取得中表示
+  routeInfoEl.style.display = "block";
+  routeInfoEl.innerHTML = "ルートを取得中…";
+
+  fetch(url)
+    .then(res => res.json())
+    .then(json => {
+      if (!json.routes || json.routes.length === 0) {
+        routeInfoEl.innerHTML = "ルートが見つかりません";
+        return;
+      }
+
+      // 距離（m）と所要時間（秒）は OSRM の応答に含まれる（profile による）
+      const route = json.routes[0];
+      const distanceMeters = route.distance || 0; // メートル
+      const distanceKm = (distanceMeters / 1000);
+      // OSRM の duration は歩行プロファイルの時間。自転車時間は距離から推定する。
+      // 推定自転車速度（km/h）を設定（例: 15 km/h）
+      const cyclingSpeedKmh = 15;
+      const cyclingHours = distanceKm / cyclingSpeedKmh;
+      const cyclingMinutesTotal = Math.round(cyclingHours * 60);
+
+      // 表示用フォーマット
+      const distanceText = distanceKm >= 1 ? distanceKm.toFixed(2) + " km" : (distanceMeters.toFixed(0) + " m");
+      let timeText = "";
+      if (cyclingMinutesTotal >= 60) {
+        const h = Math.floor(cyclingMinutesTotal / 60);
+        const m = cyclingMinutesTotal % 60;
+        timeText = `${h}時間${m}分`;
+      } else {
+        timeText = `${cyclingMinutesTotal}分`;
+      }
+
+      // ルート描画
+      const coords = route.geometry.coordinates.map(c => [c[1], c[0]]);
+      if (routeLine) map.removeLayer(routeLine);
+      routeLine = L.polyline(coords, { color: "red", weight: 4 }).addTo(map);
+      map.fitBounds(routeLine.getBounds());
+
+      // ルート情報パネル更新
+      routeInfoEl.innerHTML =
+        `<div><b>距離</b>${distanceText}</div>` +
+        `<div><b>自転車時間</b>${timeText}</div>` +
+        `<div style="margin-top:6px;font-size:12px;color:#666">※推定速度 ${cyclingSpeedKmh} km/h</div>`;
+
+    })
+    .catch(err => {
+      console.warn("Route fetch error:", err);
+      routeInfoEl.innerHTML = "ルート取得に失敗しました";
+    });
+}
+
+// ===============================
+// ダブルクリックで目的地設定（既定のズーム動作は無効化済み）
+map.on("dblclick", function(e) {
+  if (e && e.latlng) {
+    setDestination(e.latlng);
+  }
+});
+
+// ===============================
+// 検索バー（Nominatim）
+document.getElementById("search-btn").onclick = () => {
+  const q = document.getElementById("search-input").value;
+  if (!q) return;
+
+  fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}`)
+    .then(res => res.json())
+    .then(results => {
+      if (!results || results.length === 0) return;
+      const lat = parseFloat(results[0].lat);
+      const lon = parseFloat(results[0].lon);
+      setDestination([lat, lon]);
+      map.setView([lat, lon], 17);
+    })
+    .catch(err => console.warn("Search error:", err));
+};
+
+// ===============================
+// 説明モーダル（免責ボタン）
+document.getElementById("help-btn").onclick = () => {
+  document.getElementById("help-modal").classList.remove("hidden");
+};
+document.getElementById("close-help").onclick = () => {
+  document.getElementById("help-modal").classList.add("hidden");
+};
+</script>
+
+</body>
+</html>
